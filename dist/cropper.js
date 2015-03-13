@@ -325,8 +325,10 @@
       $this.removeClass(CLASS_HIDDEN);
 
       $cropper.css((this.container = {
-        width: max($container.width(), num(options.minContainerWidth) || 350),
-        height: max($container.height(), num(options.minContainerHeight) || 150)
+        // width: max($container.width(), num(options.minContainerWidth) || 350),
+        // height: max($container.height(), num(options.minContainerHeight) || 150)
+        width: $container.width(),
+        height: $container.height()
       }));
 
       $this.addClass(CLASS_HIDDEN);
@@ -342,16 +344,29 @@
           width = image.naturalWidth,
           height = image.naturalHeight,
           left = 0,
-          top = 0;
+          top = 0,
+          ratio = [ containerWidth / width, containerHeight / height ],
+          maxZoom = Math.max.apply(null, ratio);
 
-      if (containerHeight * aspectRatio > containerWidth) {
-        width = containerWidth;
-        height = width / aspectRatio;
-        top = (containerHeight - height) / 2;
+      if (this.options.fillContainer) {
+        width = width * maxZoom;
+        height = height * maxZoom;
+  
+        if (containerHeight * aspectRatio > containerWidth) {
+          top = (containerHeight - height) / 2;
+        } else {
+          left = (containerWidth - width) / 2;
+        }
       } else {
-        height = containerHeight;
-        width = height * aspectRatio;
-        left = (containerWidth - width) / 2;
+        if (containerHeight * aspectRatio > containerWidth) {
+          width = containerWidth;
+          height = width / aspectRatio;
+          top = (containerHeight - height) / 2;
+        } else {
+          height = containerHeight;
+          width = height * aspectRatio;
+          left = (containerWidth - width) / 2;
+        }
       }
 
       $.extend(image, {
@@ -372,6 +387,24 @@
           height = image.height,
           rotate = image.rotate,
           rotated;
+
+      if (changed) {
+          var cropBoxData = this.getCropBoxData();
+
+          image.left = Math.min(image.left, cropBoxData.left);
+          image.top = Math.min(image.top, cropBoxData.top);
+
+          var cropBoxRight = cropBoxData.left + cropBoxData.width;
+          var cropBoxBottom = cropBoxData.top + cropBoxData.height;
+
+          if (image.left + image.width < cropBoxRight) {
+              image.left = cropBoxRight - image.width;
+          }
+
+          if (image.top + image.height < cropBoxBottom) {
+              image.top = cropBoxBottom - image.height;
+          }
+      }
 
       if (rotate) {
         rotated = getRotatedSizes({
@@ -879,20 +912,33 @@
     zoom: function (delta) {
       var image = this.image,
           width,
-          height;
+          height,
+          maxDeltaWidth,
+          maxDeltaHeight;
 
-      delta = num(delta);
+      delta = parseFloat(delta);
 
       if (delta && this.built && !this.disabled && this.options.zoomable) {
-        delta = delta <= -1 ? 1 / (1 - delta) : delta <= 1 ? (1 + delta) : delta;
-        width = image.width * delta;
-        height = image.height * delta;
-        image.left -= (width - image.width) / 2;
-        image.top -= (height - image.height) / 2;
-        image.width = width;
-        image.height = height;
-        this.renderImage(true);
-        this.setDragMode('move');
+          delta = delta <= -1 ? 1 / (1 - delta) : delta <= 1 ? (1 + delta) : delta;
+
+          // If we're zooming out, make sure the image doesn't get smaller than the cropbox
+          if (delta < 1) {
+              var cropBoxData = this.getData();
+              maxDeltaWidth = cropBoxData.width / image.naturalWidth;
+              maxDeltaHeight = cropBoxData.height / image.naturalHeight;
+
+              delta = Math.max(delta, Math.max(maxDeltaWidth, maxDeltaHeight));
+          }
+
+          width = image.width * delta;
+          height = image.height * delta;
+
+          image.left -= (width - image.width) / 2;
+          image.top -= (height - image.height) / 2;
+          image.width = width;
+          image.height = height;
+          this.renderImage(true);
+          this.setDragMode("move");
       }
     },
 
@@ -1620,6 +1666,9 @@
     minCropBoxHeight: 0,
     minContainerWidth: 300,
     minContainerHeight: 150,
+
+    // Custom Options
+    fillContainer: true,
 
     // Events
     build: null, // Function
